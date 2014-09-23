@@ -5,9 +5,9 @@ import "errors"
 import "fmt"
 import "io"
 import "io/ioutil"
-import "log"
 import "os"
 import "path"
+import "strings"
 import "time"
 
 import "github.com/docker/docker/daemon/graphdriver"
@@ -31,45 +31,44 @@ func (gr *Graph) AddImage(img *Image) {
 	img.Tarball = gr.ImageRoot(img.ID)
 }
 
-func (gr *Graph) ReadFrom(r io.Reader) (int64, error) {
-	c := NewCounter(r)
-	tr := tar.NewReader(c)
+func (gr *Graph) Load(r io.Reader) error {
+	tr := tar.NewReader(r)
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
-			return c.Bytes, err
+			return err
 		}
 
 		switch path.Base(hdr.Name) {
 		case "json":
 			json_bb, err := ioutil.ReadAll(tr)
 			if err != nil {
-				return c.Bytes, err
+				return err
 			}
 			img, err := NewImageJSON(json_bb)
 			if err != nil {
-				return c.Bytes, err
+				return err
 			}
 			gr.AddImage(img)
 		case "layer.tar":
 			id := path.Base(path.Dir(hdr.Name))
 			tar_path := gr.ImageRoot(id)
 			if tarf, err := os.Create(tar_path); err != nil {
-				return c.Bytes, err
+				return err
 			} else {
 				_, err := io.Copy(tarf, tr)
 				tarf.Close()
 				if err != nil {
-					return c.Bytes, err
+					return err
 				}
 			}
 		}
 	}
 
-	return c.Bytes, nil
+	return nil
 }
 
 // image.Graph interface
@@ -92,16 +91,41 @@ func (gr *Graph) Driver() graphdriver.Driver {
 
 //////////
 
-func (gr *Graph) Rebase(id, base_id string) (*Image, error) {
-	img, _ := gr.Images[id]
-
-	if img == nil {
-		return nil, fmt.Errorf("%s: Image not found", id)
+func (gr *Graph) expandID(short_id string) (full_id string, err error) {
+	if _, found := gr.Images[short_id]; found {
+		return short_id, nil
 	}
+
+	for id := range gr.Images {
+		if strings.HasPrefix(id, short_id) {
+			if full_id != "" && err != nil {
+				err = fmt.Errorf("%s: ambiguous prefix", short_id)
+			}
+			full_id = id
+		}
+	}
+
+	if full_id == "" {
+		err = fmt.Errorf("%s: image not found", short_id)
+	}
+
+	return
+}
+
+func (gr *Graph) Rebase(id, base_id string) (rimg *Image, err error) {
+	if id, err = gr.expandID(id); err != nil {
+		return
+	}
+
+	if base_id, err = gr.expandID(base_id); err != nil {
+		return
+	}
+
+	img := gr.Images[id]
 
 	history, err := img.History()
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	i := len(history) - 1
@@ -109,7 +133,7 @@ func (gr *Graph) Rebase(id, base_id string) (*Image, error) {
 		Debug("Skipping", history[i].ID)
 		i--
 		if i < 0 {
-			return nil, fmt.Errorf("Base %s not found in history of %s", base_id, id)
+			return nil, fmt.Errorf("Base %s not found in history of %s", base_id, img.ID)
 		}
 	}
 
@@ -124,7 +148,6 @@ func (gr *Graph) Rebase(id, base_id string) (*Image, error) {
 	lr := NewLayer(lrdir)
 
 	for i > 0 {
-		log.Println(history[i].ID, history[i].Comment, history[i].ContainerConfig.Cmd)
 		if err := lr.Apply(gr.ImageRoot(history[i].ID)); err != nil {
 			return nil, err
 		}
@@ -136,7 +159,7 @@ func (gr *Graph) Rebase(id, base_id string) (*Image, error) {
 		return nil, err
 	}
 
-	if _, err := lr.WriteTo(lrf); err != nil {
+	if err := lr.Save(lrf); err != nil {
 		return nil, err
 	}
 	lrf.Close()

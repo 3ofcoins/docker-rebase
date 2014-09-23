@@ -41,47 +41,44 @@ func (img *Image) Clone() *Image {
 	return newimg
 }
 
-func (img *Image) WriteTo(w io.Writer) (n int64, err error) {
-	c := NewCounter(w)
-	tw := tar.NewWriter(c)
+func (img *Image) Save(w io.Writer) (err error) {
+	tw := tar.NewWriter(w)
 	defer tw.Close()
 
 	if err := WriteTarDir(tw, img.ID); err != nil {
-		return c.Bytes, err
+		return err
 	}
 	WriteTarFile(tw, path.Join(img.ID, "VERSION"), []byte("1.0"))
 	if json_bb, err := json.Marshal(img.Image); err != nil {
-		return c.Bytes, err
+		return err
 	} else {
 		if err := WriteTarFile(tw, path.Join(img.ID, "json"), json_bb); err != nil {
-			return c.Bytes, err
+			return err
 		}
 	}
 
 	fi, err := os.Stat(img.Tarball)
 	if err != nil {
-		return c.Bytes, err
+		return err
 	}
 
 	hdr, err := tar.FileInfoHeader(fi, "")
 	if err != nil {
-		return c.Bytes, err
+		return err
 	}
 
 	hdr.Name = path.Join(img.ID, "layer.tar")
 
 	err = tw.WriteHeader(hdr)
 	if err != nil {
-		return c.Bytes, err
+		return err
 	}
 
 	if lf, err := os.Open(img.Tarball); err != nil {
-		return c.Bytes, err
+		return err
 	} else {
 		io.Copy(tw, lf)
 		lf.Close()
 	}
-
-	tw.Close()
-	return c.Bytes, nil
+	return nil
 }

@@ -45,15 +45,6 @@ func (dh DockerHost) Set(val string) error {
 	return nil
 }
 
-func defaultDockerHost() DockerHost {
-	if host := os.Getenv("DOCKER_HOST"); host != "" {
-		if proto, addr, err := splitDockerHost(host); err == nil {
-			return DockerHost{proto, addr}
-		}
-	}
-	return DockerHost{"unix", api.DEFAULTUNIXSOCKET}
-}
-
 func (dh DockerHost) Cli(in io.ReadCloser, out io.Writer) *client.DockerCli {
 	if in == nil {
 		in = os.Stdin
@@ -76,9 +67,12 @@ func (dh DockerHost) ReadPipe(cmd ...string) (rc io.ReadCloser) {
 	return stdout_r
 }
 
-var Docker = defaultDockerHost()
+var Docker = DockerHost{"unix", api.DEFAULTUNIXSOCKET}
 
 func init() {
+	if host := os.Getenv("DOCKER_HOST"); host != "" {
+		Docker.Set(host)
+	}
 	flag.Var(Docker, "docker-host", "Docker host address")
 }
 

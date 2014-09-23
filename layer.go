@@ -30,7 +30,7 @@ func NewLayer(workdir string) *Layer {
 }
 
 func (lr *Layer) Apply(tarball_path string) error {
-	Debug("Applying", tarball_path)
+	Debug("apply", path.Base(tarball_path))
 	inf, err := os.Open(tarball_path)
 	if err != nil {
 		return err
@@ -51,7 +51,7 @@ func (lr *Layer) Apply(tarball_path string) error {
 
 		switch {
 		case hdr.FileInfo().IsDir():
-			Debug("mkdir", hdr.Name)
+			Debug("`- mkdir", hdr.Name)
 			lr.Files[hdr.Name] = LayerFile{hdr, ""}
 		case strings.HasPrefix(basename, ".wh..wh."):
 			fallthrough
@@ -67,21 +67,25 @@ func (lr *Layer) Apply(tarball_path string) error {
 				return err
 			}
 
-			Debug("add  ", hdr.Name, "->", tmpf.Name())
+			Debug("`- add  ", hdr.Name, "->", tmpf.Name())
 			lr.Files[hdr.Name] = LayerFile{hdr, tmpf.Name()}
 		case strings.HasPrefix(basename, ".wh."):
 			del := path.Join(path.Dir(hdr.Name), basename[4:])
 			if _, isfile := lr.Files[del]; isfile {
-				Debug("rm   ", del, "//", hdr.Name)
+				Debug("`- rm  ", del, "//", hdr.Name)
 				delete(lr.Files, del)
 			} else {
-				del += "/"
-				Debug("rm -r", del)
-				for entry := range lr.Files {
-					if strings.HasPrefix(entry, del) {
-						delete(lr.Files, entry)
-						Debug("`- rm", entry)
+				if _, isdir := lr.Files[del+"/"]; isdir {
+					Debug("`- rm -r", del)
+					for entry := range lr.Files {
+						if strings.HasPrefix(entry, del) {
+							delete(lr.Files, entry)
+							Debug("  `- rm", entry)
+						}
 					}
+				} else {
+					Debug("`- del  ", hdr.Name)
+					lr.Files[hdr.Name] = LayerFile{hdr, ""}
 				}
 			}
 		}
@@ -97,7 +101,7 @@ func (lr *Layer) Size() int64 {
 	return size
 }
 
-func (lr *Layer) WriteTo(w io.Writer) (n int64, err error) {
+func (lr *Layer) Save(w io.Writer) error {
 	// Sort files for sanity
 	files := make([]string, len(lr.Files))
 	i := 0
@@ -107,30 +111,23 @@ func (lr *Layer) WriteTo(w io.Writer) (n int64, err error) {
 	}
 	sort.Strings(files)
 
-	c := NewCounter(w)
-	tw := tar.NewWriter(c)
+	tw := tar.NewWriter(w)
 	defer tw.Close()
 
 	for _, fn := range files {
 		lf := lr.Files[fn]
-		err = tw.WriteHeader(lf.Header)
-		if err != nil {
-			goto exit
+		if err := tw.WriteHeader(lf.Header); err != nil {
+			return err
 		}
 		if lf.Path != "" {
-			df, err := os.Open(lf.Path)
-			if err != nil {
-				goto exit
+			copier := func(r io.Reader) error {
+				_, err := io.Copy(tw, r)
+				return err
 			}
-			_, err = io.Copy(tw, df)
-			if err != nil {
-				goto exit
+			if err := WithOpen(lf.Path, copier); err != nil {
+				return err
 			}
-			df.Close()
 		}
 	}
-
-exit:
-	tw.Close()
-	return c.Bytes, err
+	return nil
 }
