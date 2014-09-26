@@ -9,8 +9,8 @@ import "os"
 import "path"
 
 type LayerFile struct {
-	Header *tar.Header
-	Path   string
+	*tar.Header
+	Path string
 }
 
 type Layer struct {
@@ -51,11 +51,17 @@ func (lr *Layer) Apply(tarball_path string) error {
 
 		switch {
 		case hdr.FileInfo().IsDir():
+			// Directories are always additions; directory removal is a
+			// file. Key for a directory entry doesn't include trailing
+			// slash to make it easier with deletions.
 			Debug("`- mkdir", hdr.Name)
-			lr.Files[hdr.Name] = LayerFile{hdr, ""}
+			lr.Files[hdr.Name[:len(hdr.Name)-1]] = LayerFile{hdr, ""}
 		case strings.HasPrefix(basename, ".wh..wh."):
+			// Aufs' magic ".wh..wh." files should be added rather than
+			// treated as deletion
 			fallthrough
 		default:
+			// File addition / overwrite
 			tmpf, err := ioutil.TempFile(lr.Workdir, basename+".")
 			if err != nil {
 				return err
@@ -70,23 +76,26 @@ func (lr *Layer) Apply(tarball_path string) error {
 			Debug("`- add  ", hdr.Name, "->", tmpf.Name())
 			lr.Files[hdr.Name] = LayerFile{hdr, tmpf.Name()}
 		case strings.HasPrefix(basename, ".wh."):
-			del := path.Join(path.Dir(hdr.Name), basename[4:])
-			if _, isfile := lr.Files[del]; isfile {
-				Debug("`- rm  ", del, "//", hdr.Name)
-				delete(lr.Files, del)
-			} else {
-				if _, isdir := lr.Files[del+"/"]; isdir {
-					Debug("`- rm -r", del)
-					for entry := range lr.Files {
-						if strings.HasPrefix(entry, del) {
-							delete(lr.Files, entry)
-							Debug("  `- rm", entry)
-						}
+			// File or directory deletion
+			lf, exists := lr.Files[path.Join(path.Dir(hdr.Name), basename[4:])]
+			switch {
+			case !exists:
+				// File did not exist in previous layers
+				Debug("`- del  ", hdr.Name)
+				lr.Files[hdr.Name] = LayerFile{hdr, ""}
+			case lf.FileInfo().IsDir():
+				// Remove directory
+				Debug("`- rm -r", lf.Name)
+				for entry, elf := range lr.Files {
+					if strings.HasPrefix(elf.Name, lf.Name) {
+						delete(lr.Files, entry)
+						Debug("  `- rm", entry)
 					}
-				} else {
-					Debug("`- del  ", hdr.Name)
-					lr.Files[hdr.Name] = LayerFile{hdr, ""}
 				}
+			default:
+				// Remove file
+				Debug("`- rm  ", lf.Name, "//", hdr.Name)
+				delete(lr.Files, lf.Name)
 			}
 		}
 	}

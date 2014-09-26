@@ -27,23 +27,26 @@ Feature: Kitchen Sink of Features
     | -save - -zsave - |
     |                  |
     | FOO              |
-  
+
   Scenario: All-in-one simple rebase
-    When I successfully run `docker-rebase -zload fixtures/smoke.tar.gz -zsave smoke.tgz e690d26ab126 a9eb17255234`
+    When I successfully run `docker-rebase -zload fixtures/smoke.tar.gz -zsave smoke.tgz 183fcd3414f6 a9eb17255234`
     Then file "smoke.tgz" should contain an image
     And the image's JSON should be like:
-      | $.id                   | e690d26ab126791ea9ddaac6d1b512dfc5f77d653688148dfd47af5cc5f4c4dc |
+      | $.id                   | 183fcd3414f6604ba10ecf0bf8af0170fa679946cd87530ab827b2f32e21e147 |
       | $.parent               | a9eb172552348a9a49180694790b33a1097f546456d041b6e82e4d7716ddb721 |
       | $.author               | docker-rebase FTW!                                               |
-      | $.config.Entrypoint[*] | /hello                                                           |
       | $.config.User          | nobody                                                           |
     
-    And the image should add "/hello"
+    And the image should add "/baz"
     And the image should add "/network/"
     And the image should add "/network/interfaces"
+    And the image should add "/foobar"
+    And the image should not add "/foo/"
+    And the image should not delete "/foo/"
       
     And the image should delete "/etc/init.d/rcK"
     And the image should delete "/home"
+    And the image should add "/home.is.not.here"
     
     And the image should not add "/df"
     And the image should not delete "/df"
