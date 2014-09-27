@@ -28,9 +28,9 @@ Feature: Kitchen Sink of Features
     |                  |
     | FOO              |
 
-  Scenario: All-in-one simple rebase
-    When I run: docker-rebase -zload fixtures/smoke.tar.gz -zsave smoke.tgz $FIXTURE_SMOKE_SHORT_ID $FIXTURE_SMOKE_BASE_SHORT_ID
-    Then file "smoke.tgz" should contain an image
+  Scenario Outline: Rebase from a (gzipped) tarball to a (gzipped) tarball
+    When I run: <precmd> docker-rebase <flags> $FIXTURE_SMOKE_SHORT_ID $FIXTURE_SMOKE_BASE_SHORT_ID
+    Then file "<outfile>" should contain an image
     And the image's JSON should be like:
       | $.id          | $FIXTURE_SMOKE_ID      |
       | $.parent      | $FIXTURE_SMOKE_BASE_ID |
@@ -56,4 +56,9 @@ Feature: Kitchen Sink of Features
     And the image should add "/etc/init.d/S20urandom"
     And the image should not delete "/etc/init.d/S20urandom"
 
-# Scenario: remove from base, then add in child
+    Examples:
+    | precmd                                         | flags                                       | outfile |
+    | gunzip -c fixtures/smoke.tar.gz > smoke.tar && | -load smoke.tar -save out.tar               | out.tar |
+    | gunzip -c fixtures/smoke.tar.gz > smoke.tar && | -load smoke.tar -zsave out.tgz              | out.tgz |
+    |                                                | -zload fixtures/smoke.tar.gz -save out.tar  | out.tar |
+    |                                                | -zload fixtures/smoke.tar.gz -zsave out.tgz | out.tgz |
