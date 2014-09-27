@@ -53,4 +53,7 @@ Feature: Kitchen Sink of Features
     And the image should not add "/network/if-up.d/"
     And the image should not delete "/network/if-up.d/"
 
+    And the image should add "/etc/init.d/S20urandom"
+    And the image should not delete "/etc/init.d/S20urandom"
+
 # Scenario: remove from base, then add in child

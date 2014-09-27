@@ -29,6 +29,12 @@ func NewLayer(workdir string) *Layer {
 	return &lr
 }
 
+func (lr *Layer) undelete(path_ string) {
+	// FIXME: what if there exists a deletion of a directory that
+	// contains path?
+	delete(lr.Files, path.Join(path.Dir(path_), ".wh."+path.Base(path_)))
+}
+
 func (lr *Layer) Apply(tarball_path string) error {
 	Debug("apply", path.Base(tarball_path))
 	inf, err := os.Open(tarball_path)
@@ -55,7 +61,9 @@ func (lr *Layer) Apply(tarball_path string) error {
 			// file. Key for a directory entry doesn't include trailing
 			// slash to make it easier with deletions.
 			Debug("`- mkdir", hdr.Name)
-			lr.Files[hdr.Name[:len(hdr.Name)-1]] = LayerFile{hdr, ""}
+			shortName := hdr.Name[:len(hdr.Name)-1] // without trailing slash
+			lr.undelete(shortName)
+			lr.Files[shortName] = LayerFile{hdr, ""}
 		case strings.HasPrefix(basename, ".wh..wh."):
 			// Aufs' magic ".wh..wh." files should be added rather than
 			// treated as deletion
@@ -74,6 +82,7 @@ func (lr *Layer) Apply(tarball_path string) error {
 			}
 
 			Debug("`- add  ", hdr.Name, "->", tmpf.Name())
+			lr.undelete(hdr.Name)
 			lr.Files[hdr.Name] = LayerFile{hdr, tmpf.Name()}
 		case strings.HasPrefix(basename, ".wh."):
 			// File or directory deletion
