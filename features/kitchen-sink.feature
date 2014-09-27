@@ -29,13 +29,13 @@ Feature: Kitchen Sink of Features
     | FOO              |
 
   Scenario: All-in-one simple rebase
-    When I successfully run `docker-rebase -zload fixtures/smoke.tar.gz -zsave smoke.tgz 183fcd3414f6 a9eb17255234`
+    When I run: docker-rebase -zload fixtures/smoke.tar.gz -zsave smoke.tgz $FIXTURE_SMOKE_SHORT_ID $FIXTURE_SMOKE_BASE_SHORT_ID
     Then file "smoke.tgz" should contain an image
     And the image's JSON should be like:
-      | $.id                   | 183fcd3414f6604ba10ecf0bf8af0170fa679946cd87530ab827b2f32e21e147 |
-      | $.parent               | a9eb172552348a9a49180694790b33a1097f546456d041b6e82e4d7716ddb721 |
-      | $.author               | docker-rebase FTW!                                               |
-      | $.config.User          | nobody                                                           |
+      | $.id          | $FIXTURE_SMOKE_ID      |
+      | $.parent      | $FIXTURE_SMOKE_BASE_ID |
+      | $.author      | docker-rebase FTW!     |
+      | $.config.User | nobody                 |
     
     And the image should add "/baz"
     And the image should add "/network/"

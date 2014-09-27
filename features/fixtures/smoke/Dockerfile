@@ -12,5 +12,8 @@ RUN cp -a /etc/network /
 # Remove directory that is also prefix of a file
 RUN rm -rf /etc/init.d/* /network/if-* /home /foo
 
+# Re-add previously removed file
+RUN date > /etc/init.d/S20urandom
+
 USER nobody
 

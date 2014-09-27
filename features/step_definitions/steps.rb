@@ -1,3 +1,9 @@
+require 'shellwords'
+
+When(/^I run: (.*)/) do |cmd|
+  step "I successfully run `/bin/sh -c #{Shellwords.escape(cmd)}`"
+end
+
 Then(/^no line of output exceeds (\d+) characters$/) do |n|
   assert { all_output.lines.map(&:length).max <= n.to_i }
 end
@@ -10,6 +16,7 @@ end
 
 Then(/^the image's JSON should be like:$/) do |table|
   table.raw.each do |expr, value|
+    value = ENV[value[1..-1]] if value.start_with?('$')
     assert { @image[expr] == value }
   end
 end
